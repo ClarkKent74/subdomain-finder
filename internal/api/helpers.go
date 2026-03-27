@@ -1,28 +1,12 @@
 package api
 
 import (
-	"bufio"
 	"encoding/json"
 	"errors"
 	"net/http"
-	"strings"
 
 	"subdomain-finder/internal/entity"
 )
-
-// parseWordlist читает файл словаря и возвращает список слов.
-func parseWordlist(r interface{ Read([]byte) (int, error) }) ([]string, error) {
-	var words []string
-	scanner := bufio.NewScanner(r)
-	for scanner.Scan() {
-		word := strings.TrimSpace(scanner.Text())
-		if word == "" || strings.HasPrefix(word, "#") {
-			continue
-		}
-		words = append(words, word)
-	}
-	return words, scanner.Err()
-}
 
 // writeServiceError переводит ошибки сервиса в HTTP статусы.
 func writeServiceError(w http.ResponseWriter, err error) {
