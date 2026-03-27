@@ -83,8 +83,8 @@ func main() {
 		}
 	}()
 
-	fmt.Printf("✅ Сервис запущен на http://localhost:%s\n", cfg.Server.Port)
-	fmt.Printf("📖 Swagger UI:  http://localhost:%s/swagger/index.html\n", cfg.Server.Port)
+	fmt.Printf("Сервис запущен на http://localhost:%s\n", cfg.Server.Port)
+	fmt.Printf("Swagger UI:  http://localhost:%s/swagger/index.html\n", cfg.Server.Port)
 
 	quit := make(chan os.Signal, 1)
 	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
