@@ -4,7 +4,7 @@
 
 ## Как это работает
 
-Сервис использует Sudomy который параллельно опрашивает 22 источника:
+Сервис использует Sudomy, который параллельно опрашивает 22 источника:
 crt.sh, DNSdumpster, HackerTarget, Certspotter, Webarchive, CommonCrawl, AlienVault, RapidDNS, UrlScan и другие.
 
 При наличии API ключей подключаются платные источники: Shodan, VirusTotal, Censys, SecurityTrails, BinaryEdge.
