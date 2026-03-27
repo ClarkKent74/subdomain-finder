@@ -43,14 +43,14 @@ func (s *RedisStore) Close() error {
 	return s.client.Close()
 }
 
-func taskKey(domain string, algorithm entity.Algorithm) string {
-	return fmt.Sprintf("task:%s:%s", domain, algorithm)
+func taskKey(domain string) string {
+	return fmt.Sprintf("task:%s:%s", domain)
 }
 
 const counterKey = "tasks:count"
 
 func (s *RedisStore) Create(ctx context.Context, task *entity.Task) error {
-	key := taskKey(task.Domain, task.Algorithm)
+	key := taskKey(task.Domain)
 
 	existing, err := s.getByKey(ctx, key)
 	if err != nil && !errors.Is(err, entity.ErrTaskNotFound) {
@@ -82,12 +82,12 @@ func (s *RedisStore) Create(ctx context.Context, task *entity.Task) error {
 	return nil
 }
 
-func (s *RedisStore) Get(ctx context.Context, domain string, algorithm entity.Algorithm) (*entity.Task, error) {
-	return s.getByKey(ctx, taskKey(domain, algorithm))
+func (s *RedisStore) Get(ctx context.Context, domain string) (*entity.Task, error) {
+	return s.getByKey(ctx, taskKey(domain))
 }
 
 func (s *RedisStore) Update(ctx context.Context, task *entity.Task) error {
-	key := taskKey(task.Domain, task.Algorithm)
+	key := taskKey(task.Domain)
 
 	exists, err := s.client.Exists(ctx, key).Result()
 	if err != nil {

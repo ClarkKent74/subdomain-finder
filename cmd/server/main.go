@@ -1,6 +1,6 @@
 // @title           Subdomain Finder API
 // @version         1.0
-// @description     Сервис поиска поддоменов.
+// @description     Сервис поиска поддоменов через Sudomy.
 // @host            localhost:8080
 // @BasePath        /
 
@@ -21,7 +21,6 @@ import (
 	_ "subdomain-finder/docs"
 	"subdomain-finder/internal/api"
 	"subdomain-finder/internal/configs"
-	"subdomain-finder/internal/entity"
 	"subdomain-finder/internal/scanner"
 	"subdomain-finder/internal/service"
 	"subdomain-finder/internal/store"
@@ -48,26 +47,19 @@ func main() {
 	}
 	defer st.Close()
 
-	registry := scanner.Registry{
-		entity.AlgorithmPassive: scanner.NewPassiveScanner(
-			cfg.Scanner.PassiveTimeout,
-			cfg.Scanner.CircuitBreakerThreshold,
-			cfg.Scanner.CircuitBreakerTimeout,
-		),
-		entity.AlgorithmBruteforce: scanner.NewBruteforceScanner(
-			cfg.DNS.Resolver,
-			cfg.DNS.WorkerCount,
-			cfg.DNS.QueryTimeout,
-		),
-		entity.AlgorithmZoneTransfer: scanner.NewZoneTransferScanner(
-			cfg.DNS.QueryTimeout,
-		),
-	}
+	sc := scanner.NewSudomyScanner(
+		cfg.Sudomy.Path,
+		cfg.Sudomy.ScanTimeout,
+		cfg.Sudomy.VirusTotalKey,
+		cfg.Sudomy.ShodanKey,
+		cfg.Sudomy.CensysKey,
+		cfg.Sudomy.SecurityTrailsKey,
+	)
 
 	svc := service.NewFinderService(
 		ctx,
 		st,
-		registry,
+		sc,
 		cfg.Workers.PoolSize,
 		cfg.Workers.QueueSize,
 		cfg.Workers.ScanTimeout,
@@ -91,29 +83,22 @@ func main() {
 		}
 	}()
 
-	fmt.Printf("Сервис запущен на http://localhost:%s\n", cfg.Server.Port)
-	fmt.Printf("Swagger UI:  http://localhost:%s/swagger/index.html\n", cfg.Server.Port)
-	fmt.Println()
-	fmt.Println("Для остановки - Ctrl+C")
+	fmt.Printf("✅ Сервис запущен на http://localhost:%s\n", cfg.Server.Port)
+	fmt.Printf("📖 Swagger UI:  http://localhost:%s/swagger/index.html\n", cfg.Server.Port)
 
-	// Graceful shutdown
 	quit := make(chan os.Signal, 1)
 	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
 	<-quit
 
 	slog.Info("получен сигнал остановки, завершаем работу...")
 
-	// Даём 30 секунд на завершение активных запросов
 	shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer shutdownCancel()
 
-	// Останавливаем HTTP сервер — новые запросы не принимаем
 	if err := srv.Shutdown(shutdownCtx); err != nil {
 		slog.Error("ошибка graceful shutdown", "error", err)
 	}
 
-	// Отменяем контекст — останавливаем воркеры
 	cancel()
-
 	slog.Info("сервис остановлен")
 }

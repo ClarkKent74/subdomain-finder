@@ -9,7 +9,6 @@ import (
 	"github.com/joho/godotenv"
 )
 
-// Load загружает конфигурацию из .env файла
 func Load() *Config {
 	_ = godotenv.Load(".env")
 
@@ -33,20 +32,17 @@ func Load() *Config {
 		Rate: RateConfig{
 			RequestsPerMinute: getInt("RATE_LIMIT_RPM", 20),
 		},
-		DNS: DNSConfig{
-			Resolver:     getEnv("DNS_RESOLVER", "8.8.8.8:53"),
-			QueryTimeout: getDuration("DNS_QUERY_TIMEOUT", 5*time.Second),
-			WorkerCount:  getInt("DNS_WORKER_COUNT", 50),
-		},
-		Scanner: ScannerConfig{
-			PassiveTimeout:          getDuration("SCANNER_PASSIVE_TIMEOUT", 30*time.Second),
-			CircuitBreakerThreshold: getInt("SCANNER_CB_THRESHOLD", 5),
-			CircuitBreakerTimeout:   getDuration("SCANNER_CB_TIMEOUT", 30*time.Second),
+		Sudomy: SudomyConfig{
+			Path:              getEnv("SUDOMY_PATH", "/usr/lib/sudomy/sudomy"),
+			ScanTimeout:       getDuration("SUDOMY_SCAN_TIMEOUT", 30*time.Minute),
+			VirusTotalKey:     getEnv("SUDOMY_VIRUSTOTAL_KEY", ""),
+			ShodanKey:         getEnv("SUDOMY_SHODAN_KEY", ""),
+			CensysKey:         getEnv("SUDOMY_CENSYS_KEY", ""),
+			SecurityTrailsKey: getEnv("SUDOMY_SECURITYTRAILS_KEY", ""),
 		},
 	}
 }
 
-// Validate проверяет корректность конфигурации.
 func (c *Config) Validate() error {
 	if c.Workers.PoolSize < 1 || c.Workers.PoolSize > 100 {
 		return fmt.Errorf("WORKER_POOL_SIZE должен быть от 1 до 100, получено: %d", c.Workers.PoolSize)
@@ -60,13 +56,9 @@ func (c *Config) Validate() error {
 	if c.Rate.RequestsPerMinute < 1 || c.Rate.RequestsPerMinute > 1000 {
 		return fmt.Errorf("RATE_LIMIT_RPM должен быть от 1 до 1000, получено: %d", c.Rate.RequestsPerMinute)
 	}
-	if c.DNS.WorkerCount < 1 || c.DNS.WorkerCount > 500 {
-		return fmt.Errorf("DNS_WORKER_COUNT должен быть от 1 до 500, получено: %d", c.DNS.WorkerCount)
-	}
 	return nil
 }
 
-// getEnv возвращает значение переменной окружения или дефолт.
 func getEnv(key, defaultVal string) string {
 	if val := os.Getenv(key); val != "" {
 		return val
@@ -74,7 +66,6 @@ func getEnv(key, defaultVal string) string {
 	return defaultVal
 }
 
-// getInt возвращает целочисленное значение переменной окружения или дефолт.
 func getInt(key string, defaultVal int) int {
 	val := os.Getenv(key)
 	if val == "" {
@@ -87,7 +78,6 @@ func getInt(key string, defaultVal int) int {
 	return n
 }
 
-// getDuration возвращает duration из переменной окружения или дефолт.
 func getDuration(key string, defaultVal time.Duration) time.Duration {
 	val := os.Getenv(key)
 	if val == "" {

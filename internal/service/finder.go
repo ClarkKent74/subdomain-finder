@@ -14,13 +14,12 @@ import (
 )
 
 type job struct {
-	task  *entity.Task
-	words []string // словарь для брутфорса, nil если используется встроенный
+	task *entity.Task
 }
 
 type FinderService struct {
 	store       store.Store
-	registry    scanner.Registry
+	scanner     scanner.Scanner
 	queue       chan job
 	scanTimeout time.Duration
 }
@@ -28,14 +27,14 @@ type FinderService struct {
 func NewFinderService(
 	ctx context.Context,
 	st store.Store,
-	registry scanner.Registry,
+	sc scanner.Scanner,
 	workerCount int,
 	queueSize int,
 	scanTimeout time.Duration,
 ) *FinderService {
 	s := &FinderService{
 		store:       st,
-		registry:    registry,
+		scanner:     sc,
 		queue:       make(chan job, queueSize),
 		scanTimeout: scanTimeout,
 	}
@@ -47,23 +46,14 @@ func NewFinderService(
 	return s
 }
 
-func (s *FinderService) FindDomains(ctx context.Context, domain string, algorithm entity.Algorithm, words []string) error {
+func (s *FinderService) FindDomains(ctx context.Context, domain string) error {
 	if err := validate.Domain(domain); err != nil {
 		return fmt.Errorf("%w: %s", entity.ErrInvalidDomain, err)
-	}
-
-	if _, ok := s.registry[algorithm]; !ok {
-		return entity.ErrInvalidAlgorithm
-	}
-
-	if len(words) > 0 && algorithm != entity.AlgorithmBruteforce {
-		return fmt.Errorf("словарь можно передавать только для алгоритма bruteforce")
 	}
 
 	now := time.Now()
 	task := &entity.Task{
 		Domain:    domain,
-		Algorithm: algorithm,
 		Status:    entity.StatusPending,
 		CreatedAt: now,
 		UpdatedAt: now,
@@ -74,7 +64,7 @@ func (s *FinderService) FindDomains(ctx context.Context, domain string, algorith
 	}
 
 	select {
-	case s.queue <- job{task: task, words: words}:
+	case s.queue <- job{task: task}:
 		return nil
 	default:
 		failTask(ctx, s.store, task, "очередь воркеров переполнена")
@@ -82,16 +72,12 @@ func (s *FinderService) FindDomains(ctx context.Context, domain string, algorith
 	}
 }
 
-func (s *FinderService) GetResult(ctx context.Context, domain string, algorithm entity.Algorithm) (*entity.Task, error) {
+func (s *FinderService) GetResult(ctx context.Context, domain string) (*entity.Task, error) {
 	if err := validate.Domain(domain); err != nil {
 		return nil, fmt.Errorf("%w: %s", entity.ErrInvalidDomain, err)
 	}
 
-	if _, ok := s.registry[algorithm]; !ok {
-		return nil, entity.ErrInvalidAlgorithm
-	}
-
-	return s.store.Get(ctx, domain, algorithm)
+	return s.store.Get(ctx, domain)
 }
 
 func (s *FinderService) worker(ctx context.Context, id int) {
@@ -116,25 +102,19 @@ func (s *FinderService) worker(ctx context.Context, id int) {
 func (s *FinderService) process(ctx context.Context, j job) {
 	task := j.task
 
-	slog.Info("начало сканирования",
-		"domain", task.Domain,
-		"algorithm", task.Algorithm,
-	)
+	slog.Info("начало сканирования", "domain", task.Domain)
 
 	task.Status = entity.StatusRunning
 	task.UpdatedAt = time.Now()
 	if err := s.store.Update(ctx, task); err != nil {
-		slog.Error("не удалось обновить статус на Running",
-			"domain", task.Domain,
-			"error", err,
-		)
+		slog.Error("не удалось обновить статус на Running", "domain", task.Domain, "error", err)
 		return
 	}
 
 	scanCtx, cancel := context.WithTimeout(ctx, s.scanTimeout)
 	defer cancel()
 
-	results, err := s.runScanner(scanCtx, task, j.words)
+	results, err := s.scanner.Scan(scanCtx, task.Domain)
 
 	if err != nil {
 		if errors.Is(err, context.Canceled) {
@@ -142,11 +122,7 @@ func (s *FinderService) process(ctx context.Context, j job) {
 			return
 		}
 
-		slog.Error("сканирование завершилось ошибкой",
-			"domain", task.Domain,
-			"algorithm", task.Algorithm,
-			"error", err,
-		)
+		slog.Error("сканирование завершилось ошибкой", "domain", task.Domain, "error", err)
 		failTask(ctx, s.store, task, err.Error())
 		return
 	}
@@ -155,32 +131,11 @@ func (s *FinderService) process(ctx context.Context, j job) {
 	task.Results = results
 	task.UpdatedAt = time.Now()
 	if err := s.store.Update(ctx, task); err != nil {
-		slog.Error("не удалось сохранить результаты",
-			"domain", task.Domain,
-			"error", err,
-		)
+		slog.Error("не удалось сохранить результаты", "domain", task.Domain, "error", err)
 		return
 	}
 
-	slog.Info("сканирование завершено",
-		"domain", task.Domain,
-		"algorithm", task.Algorithm,
-		"найдено", len(results),
-	)
-}
-
-func (s *FinderService) runScanner(ctx context.Context, task *entity.Task, words []string) ([]string, error) {
-	sc := s.registry[task.Algorithm]
-
-	if task.Algorithm == entity.AlgorithmBruteforce && len(words) > 0 {
-		bf, ok := sc.(*scanner.BruteforceScanner)
-		if !ok {
-			return nil, fmt.Errorf("внутренняя ошибка: сканер bruteforce имеет неверный тип")
-		}
-		return bf.ScanWithWords(ctx, task.Domain, words)
-	}
-
-	return sc.Scan(ctx, task.Domain)
+	slog.Info("сканирование завершено", "domain", task.Domain, "найдено", len(results))
 }
 
 func failTask(ctx context.Context, st store.Store, task *entity.Task, reason string) {
@@ -188,9 +143,6 @@ func failTask(ctx context.Context, st store.Store, task *entity.Task, reason str
 	task.Error = reason
 	task.UpdatedAt = time.Now()
 	if err := st.Update(ctx, task); err != nil {
-		slog.Error("не удалось обновить статус на Failed",
-			"domain", task.Domain,
-			"error", err,
-		)
+		slog.Error("не удалось обновить статус на Failed", "domain", task.Domain, "error", err)
 	}
 }
