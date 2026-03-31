@@ -15,7 +15,7 @@ crt.sh, DNSdumpster, HackerTarget, Certspotter, Webarchive, CommonCrawl, AlienVa
 
 ```bash
 # 1. Клонировать репозиторий
-git clone https://github.com/твой_ник/subdomain-finder.git
+git clone https://github.com/ClarkKent74/subdomain-finder
 cd subdomain-finder
 
 # 2. Создать конфиг
